@@ -1,8 +1,10 @@
 import json
 import time
 import redis
+from app.core.config import REDIS_URL
 
-r = redis.Redis(host="localhost", port=6379, db=2, decode_responses=True)
+# ✅ FIX: use Render / Upstash Redis instead of localhost
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
 
 def _now():
@@ -20,7 +22,7 @@ def get_task(task_id):
 
 def update_task(task_id, patch: dict):
     data = get_task(task_id)
-    
+
     if not data:
         return
 

@@ -1,8 +1,9 @@
 import json
 import time
 import redis
+from app.core.config import REDIS_URL
 
-r = redis.Redis(host="localhost", port=6379, db=3, decode_responses=True)
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
 
 def _now():
