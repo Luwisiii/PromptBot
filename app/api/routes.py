@@ -10,11 +10,7 @@ from app.storage.redis_store import (
     update_task
 )
 
-from app.storage.trace_store import (
-    init_trace,
-    add_trace
-)
-
+from app.storage.trace_store import init_trace, add_trace
 from app.tasks.processor import process_task
 from app.services.llm import compile_prompt
 
@@ -28,26 +24,21 @@ async def assist(req: AssistRequest):
 
     init_task(task_id, req.model_dump())
     init_trace(task_id)
-    
+
     add_trace(task_id, "init_task", req.model_dump())
 
     try:
         compiled = compile_prompt(req.prompt, req.target)
+
         add_trace(task_id, "llm_compile", {"ok": True})
 
+        # ✅ CLEAN SINGLE CONTRACT
         structured_payload = {
             "type": req.target,
             "prompt": req.prompt,
-            "media": compiled.get("media", {}),
-            "quality": compiled.get("quality", {}),
-            "extras": compiled.get("extras", {}),
-            "style": compiled.get("style"),
-            "negative_prompt": compiled.get("negative_prompt"),
-            "generation_prompt": compiled.get("generation_prompt", {})
+            "generation_prompt": compiled
         }
-        
-        structured_payload.update(compiled)
-        
+
         update_task(task_id, {"compiled": structured_payload})
         add_trace(task_id, "compiled_ready")
 
@@ -55,6 +46,7 @@ async def assist(req: AssistRequest):
         add_trace(task_id, "processing_started")
 
         process_task.delay(task_id, structured_payload)
+
         add_trace(task_id, "queued")
 
         return {
@@ -75,7 +67,6 @@ async def assist(req: AssistRequest):
 
 @router.get("/result/{task_id}")
 async def get_task_result(task_id: str):
-
     data = get_task(task_id)
 
     if not data:

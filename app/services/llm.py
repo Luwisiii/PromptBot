@@ -1,48 +1,57 @@
 import json
-import re
 from openai import OpenAI
-from pydantic import ValidationError as PydanticError
+from json import JSONDecodeError
 
-from app.schemas.llm_contract import MediaSpec, GenerationPrompt
-from app.services.validator import validate_media_json
+from app.schemas.llm_contract import GenerationPrompt
 from app.core.config import OPENROUTER_API_KEY
 
 MAX_RETRIES = 3
+
+
+# -------------------------
+# STRICT SYSTEM PROMPT
+# -------------------------
 SYSTEM_PROMPT = """
-You are a JSON compiler.
+You are a STRICT JSON generator.
 
-Convert messy prompts into STRICT structured JSON.
+Return ONLY valid JSON. No markdown. No explanation.
 
-RULE:
+OUTPUT MUST MATCH THIS EXACT SCHEMA:
 
-You MUST ALSO generate:
+{
+  "task": string,
+  "goal": string,
 
-generation_prompt:
-- structured hierarchical prompt for downstream generator use
-- must include:
-  - task
-  - goal
-  - identity_handling (if applicable)
-  - scene
-  - environment
-  - lighting
-  - camera
-  - style
-  - generation_prompt (final prompt string + negative_prompt)
-  - variants (optional)
+  "identity_handling": object | null,
 
-This field is REQUIRED.
+  "scene": object,
+  "environment": object | null,
+  "lighting": object | null,
+  "camera": object | null,
+  "style": object | null,
 
-Return ONLY valid JSON.
+  "generation_prompt": {
+    "prompt": string,
+    "negative_prompt": string
+  },
+
+  "variants": array | null
+}
+
+RULES:
+- ALL keys must exist
+- Use null if missing
+- NO extra keys
+- VALID JSON ONLY
 """
 
 
 # -------------------------
-# OpenRouter client
+# CLIENT
 # -------------------------
 def get_client():
     if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY missing in environment")
+        raise RuntimeError("OPENROUTER_API_KEY missing")
 
     return OpenAI(
         base_url="https://openrouter.ai/api/v1",
@@ -51,30 +60,34 @@ def get_client():
 
 
 # -------------------------
-# Extract JSON safely
+# SAFE PARSER (NO REGEX)
 # -------------------------
 def safe_json_parse(text: str):
     try:
         return json.loads(text)
-    except Exception:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        raise ValueError(f"Invalid JSON from LLM:\n{text}")
+    except JSONDecodeError:
+        text = text.strip()
+
+        # remove markdown fences safely
+        if text.startswith("```"):
+            text = text.split("```")[1]
+
+        return json.loads(text)
 
 
 # -------------------------
-# 🔥 LLM Firewall Compiler
+# LLM COMPILER
 # -------------------------
 def compile_prompt(prompt: str, target: str):
     client = get_client()
 
     user_message = f"""
-Type: {target}
-Prompt: {prompt}
+TYPE: {target}
+PROMPT: {prompt}
 """
 
     for attempt in range(MAX_RETRIES):
+
         response = client.chat.completions.create(
             model="deepseek/deepseek-chat",
             messages=[
@@ -88,27 +101,27 @@ Prompt: {prompt}
         data = safe_json_parse(content)
 
         try:
-            # 1️⃣ Pydantic structure check
-            MediaSpec(**data)
+            # ONLY structural validation
+            validated = GenerationPrompt(**data)
 
-            # 2️⃣ JSON Schema strict validation
-            validate_media_json(data)
+            return validated.model_dump()
 
-            # ✅ SUCCESS
-            return data
+        except Exception as e:
 
-        except (PydanticError, Exception) as e:
-            # 🔁 Self-healing retry prompt
             user_message = f"""
-The JSON you returned is INVALID.
+Your previous JSON is INVALID.
 
-Errors:
+FIX STRICTLY:
+
+ERROR:
 {str(e)}
 
-Fix the JSON to match the required schema EXACTLY.
-Return JSON only.
+OUTPUT MUST MATCH SCHEMA EXACTLY.
 
-Original prompt: {prompt}
+BAD OUTPUT:
+{json.dumps(data, indent=2)}
+
+Return ONLY valid JSON.
 """
 
-    raise ValueError("LLM failed to produce valid JSON after retries.")
+    raise ValueError("LLM failed after retries")
