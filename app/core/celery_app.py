@@ -1,15 +1,13 @@
-import os
+from app.core.config import REDIS_URL
 from celery import Celery
 
-redis_url = os.environ.get("REDIS_URL")
-
-if not redis_url:
+if not REDIS_URL:
     raise ValueError("REDIS_URL is missing")
 
 celery = Celery(
     "promptbot",
-    broker=redis_url,
-    backend=redis_url,
+    broker=REDIS_URL,
+    backend=REDIS_URL,
     include=["app.tasks.processor"],
 )
 

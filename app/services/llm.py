@@ -1,14 +1,11 @@
 import json
-import os
 import re
-from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import ValidationError as PydanticError
 
 from app.schemas.llm_contract import MediaSpec
 from app.services.validator import validate_media_json
-
-load_dotenv()
+from app.core.config import OPENROUTER_API_KEY
 
 MAX_RETRIES = 3
 
@@ -22,7 +19,6 @@ You MUST fill ALL fields with smart defaults.
 SCHEMA EXAMPLE:
 
 If type = "image":
-
 {
   "type": "image",
   "prompt": "...",
@@ -42,7 +38,6 @@ If type = "image":
 }
 
 If type = "video":
-
 {
   "type": "video",
   "prompt": "...",
@@ -64,7 +59,6 @@ If type = "video":
 }
 
 If type = "audio":
-
 {
   "type": "audio",
   "prompt": "...",
@@ -89,18 +83,17 @@ Rules:
 - No missing keys
 """
 
+
 # -------------------------
 # OpenRouter client
 # -------------------------
 def get_client():
-    api_key = os.getenv("OPENROUTER_API_KEY")
-
-    if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY missing in .env")
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY missing in environment")
 
     return OpenAI(
         base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
+        api_key=OPENROUTER_API_KEY,
     )
 
 
@@ -148,11 +141,11 @@ Prompt: {prompt}
             # 2️⃣ JSON Schema strict validation
             validate_media_json(data)
 
-            # ✅ PASSED — safe to use
+            # ✅ SUCCESS
             return data
 
         except (PydanticError, Exception) as e:
-            # 🔁 Self-healing repair loop
+            # 🔁 Self-healing retry prompt
             user_message = f"""
 The JSON you returned is INVALID.
 
@@ -162,7 +155,7 @@ Errors:
 Fix the JSON to match the required schema EXACTLY.
 Return JSON only.
 
-Original user prompt: {prompt}
+Original prompt: {prompt}
 """
 
     raise ValueError("LLM failed to produce valid JSON after retries.")
