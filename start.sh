@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-printenv | grep REDIS_URL
+echo "REDIS CHECK: $REDIS_URL"
 
 celery -A app.core.celery_app worker --loglevel=info &
 
