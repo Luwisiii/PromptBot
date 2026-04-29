@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+echo "REDIS_URL=$REDIS_URL"
+
+# wait a moment for env to be ready
+sleep 3
+
 # start celery in background
 celery -A app.core.celery_app worker --loglevel=info &
 
