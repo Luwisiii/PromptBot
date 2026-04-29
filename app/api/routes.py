@@ -28,7 +28,7 @@ async def assist(req: AssistRequest):
 
     init_task(task_id, req.model_dump())
     init_trace(task_id)
-
+    
     add_trace(task_id, "init_task", req.model_dump())
 
     try:
@@ -43,10 +43,11 @@ async def assist(req: AssistRequest):
             "extras": compiled.get("extras", {}),
             "style": compiled.get("style"),
             "negative_prompt": compiled.get("negative_prompt"),
+            "generation_prompt": compiled.get("generation_prompt", {})
         }
-
+        
         structured_payload.update(compiled)
-
+        
         update_task(task_id, {"compiled": structured_payload})
         add_trace(task_id, "compiled_ready")
 

@@ -3,84 +3,37 @@ import re
 from openai import OpenAI
 from pydantic import ValidationError as PydanticError
 
-from app.schemas.llm_contract import MediaSpec
+from app.schemas.llm_contract import MediaSpec, GenerationPrompt
 from app.services.validator import validate_media_json
 from app.core.config import OPENROUTER_API_KEY
 
 MAX_RETRIES = 3
-
 SYSTEM_PROMPT = """
 You are a JSON compiler.
 
-Convert messy user prompts into STRICT JSON using this contract.
+Convert messy prompts into STRICT structured JSON.
 
-You MUST fill ALL fields with smart defaults.
+RULE:
 
-SCHEMA EXAMPLE:
+You MUST ALSO generate:
 
-If type = "image":
-{
-  "type": "image",
-  "prompt": "...",
-  "negative_prompt": "...",
-  "style": "...",
-  "media": {
-    "resolution": "1024x1024",
-    "aspect_ratio": "1:1",
-    "format": "png"
-  },
-  "quality": {
-    "steps": 30,
-    "guidance": 7.5,
-    "upscale": false
-  },
-  "extras": {}
-}
+generation_prompt:
+- structured hierarchical prompt for downstream generator use
+- must include:
+  - task
+  - goal
+  - identity_handling (if applicable)
+  - scene
+  - environment
+  - lighting
+  - camera
+  - style
+  - generation_prompt (final prompt string + negative_prompt)
+  - variants (optional)
 
-If type = "video":
-{
-  "type": "video",
-  "prompt": "...",
-  "negative_prompt": "...",
-  "style": "...",
-  "media": {
-    "resolution": "1920x1080",
-    "aspect_ratio": "16:9",
-    "duration": 8,
-    "fps": 24,
-    "format": "mp4"
-  },
-  "quality": {
-    "motion_strength": 0.7,
-    "stability": 0.6,
-    "camera_motion": "static"
-  },
-  "extras": {}
-}
+This field is REQUIRED.
 
-If type = "audio":
-{
-  "type": "audio",
-  "prompt": "...",
-  "negative_prompt": null,
-  "style": "...",
-  "media": {
-    "duration": 10,
-    "format": "mp3",
-    "sample_rate": 44100
-  },
-  "quality": {
-    "voice_clarity": 0.8,
-    "background_noise": 0.2
-  },
-  "extras": {}
-}
-
-Rules:
-- Output ONLY JSON
-- No explanation
-- No markdown
-- No missing keys
+Return ONLY valid JSON.
 """
 
 

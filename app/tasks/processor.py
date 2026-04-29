@@ -132,7 +132,7 @@ def process_task(self, task_id, structured_payload):
         # =========================
         structured_payload = validate_and_sanitize(structured_payload)
         add_trace(task_id, "final_validation")
-
+        
         # =========================
         # RESULT
         # =========================
@@ -140,16 +140,24 @@ def process_task(self, task_id, structured_payload):
             "task_id": task_id,
             "type": t,
             "model_target": structured_payload["model_target"],
+            
+            # 🧠 CORE OUTPUT FOR NODE GENERATOR
+            "generation_prompt": structured_payload.get("generation_prompt", {}),
+
+            # execution prompt for models
             "input": {
                 "prompt": prompt,
                 "optimized_prompt": optimized,
                 "prompt_score": score
             },
+
             "model_config": structured_payload.get("model_config", {}),
+
             "output": {
                 "mock": True,
                 "message": f"Routed to {structured_payload['model_target']}"
             },
+            
             "metadata": {
                 "phase": "phase-10-trace-enabled",
                 "validation_status": structured_payload.get("validation_status"),
