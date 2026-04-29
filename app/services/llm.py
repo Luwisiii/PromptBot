@@ -14,7 +14,9 @@ MAX_RETRIES = 3
 SYSTEM_PROMPT = """
 You are a STRICT JSON generator.
 
-Return ONLY valid JSON. No markdown. No explanation.
+Return ONLY valid JSON. No markdown. No explanation.If you output anything other than JSON, it is considered INVALID.
+Do not include explanations under any circumstances.
+Do not wrap in markdown.
 
 OUTPUT MUST MATCH THIS EXACT SCHEMA:
 
@@ -63,17 +65,41 @@ def get_client():
 # SAFE PARSER (NO REGEX)
 # -------------------------
 def safe_json_parse(text: str):
+
+    # 🧠 STEP 1: guard empty response
+    if not text or not text.strip():
+        raise ValueError("LLM returned empty response")
+
+    text = text.strip()
+
+    # 🧠 STEP 2: remove markdown fences if present
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            part = part.strip()
+            if part.startswith("{"):
+                text = part
+                break
+
+    # 🧠 STEP 3: try strict JSON parse
     try:
         return json.loads(text)
+
     except JSONDecodeError:
-        text = text.strip()
 
-        # remove markdown fences safely
-        if text.startswith("```"):
-            text = text.split("```")[1]
+        # 🧠 STEP 4: last-resort extraction (SAFE, not regex greedy)
+        start = text.find("{")
+        end = text.rfind("}")
 
-        return json.loads(text)
+        if start == -1 or end == -1:
+            raise ValueError(f"NO JSON FOUND IN RESPONSE:\n{text}")
 
+        candidate = text[start:end + 1]
+
+        try:
+            return json.loads(candidate)
+        except Exception:
+            raise ValueError(f"INVALID JSON AFTER RECOVERY:\n{text}")
 
 # -------------------------
 # LLM COMPILER
@@ -98,6 +124,10 @@ PROMPT: {prompt}
         )
 
         content = response.choices[0].message.content
+        if not content:
+            raise ValueError("EMPTY LLM RESPONSE")
+
+        print("LLM RAW OUTPUT:", content)
         data = safe_json_parse(content)
 
         try:
