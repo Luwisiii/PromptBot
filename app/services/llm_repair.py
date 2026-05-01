@@ -1,20 +1,46 @@
-import os
-from openai import OpenAI
 import json
+from json import JSONDecodeError
+
+from app.services.llm import get_client
 
 
-def get_client():
-    return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-    )
-
-
-def repair_json_with_llm(bad_json: dict, error: str):
+def extract_json(text: str) -> dict:
     """
-    Last resort: fix broken payload using LLM
+    Safely extract first JSON object from LLM text.
+    No regex. No LLM repair.
     """
 
+    if not text:
+        raise ValueError("Empty LLM response")
+
+    text = text.strip()
+
+    # Remove markdown fences
+    if "```" in text:
+        parts = text.split("```")
+        for p in parts:
+            p = p.strip()
+            if p.startswith("{"):
+                text = p
+                break
+
+    # Direct parse
+    try:
+        return json.loads(text)
+    except JSONDecodeError:
+        pass
+
+    # Fallback: find first {...}
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start == -1 or end == -1:
+        raise ValueError(f"No JSON found:\n{text}")
+
+    candidate = text[start:end + 1]
+    return json.loads(candidate)
+
+def repair_json_with_llm(bad_json_text: str, error: str):
     client = get_client()
 
     prompt = f"""
@@ -33,7 +59,7 @@ ERROR:
 {error}
 
 BROKEN JSON:
-{json.dumps(bad_json, indent=2)}
+{bad_json_text}
 """
 
     response = client.chat.completions.create(
@@ -44,7 +70,5 @@ BROKEN JSON:
         ],
         temperature=0.0,
     )
-    
-    content = response.choices[0].message.content
 
-    return json.loads(content)
+    return json.loads(response.choices[0].message.content)

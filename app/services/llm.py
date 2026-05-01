@@ -2,7 +2,8 @@ import json
 from openai import OpenAI
 from json import JSONDecodeError
 
-from app.schemas.llm_contract import GenerationPrompt
+from app.schemas.contract import CopilotDecision
+from app.services.llm_repair import extract_json, repair_json_with_llm
 from app.core.config import OPENROUTER_API_KEY
 
 MAX_RETRIES = 3
@@ -12,71 +13,44 @@ MAX_RETRIES = 3
 # STRICT SYSTEM PROMPT
 # -------------------------
 SYSTEM_PROMPT = """
-You are a SENIOR prompt engineer and visual director.
+You are a Creative AI Copilot for multimedia generation (image, video, audio).
 
-Your job is NOT to copy the input.
+You must analyze the user request and decide the best next step.
 
-You MUST EXPAND and ENRICH the prompt into a detailed creative production brief.
-
-RULES:
-- You MUST infer missing details creatively
-- You MUST NOT leave objects empty
-- You MUST NOT return shallow or empty fields
-- Every field must contribute meaningful creative direction
-- If information is missing, you MUST intelligently guess
-
-OUTPUT ONLY VALID JSON.
-
-SCHEMA:
+You MUST output ONLY valid JSON in this format:
 
 {
-  "task": string,
-  "goal": string,
-
-  "identity_handling": object | null,
-
-  "scene": {
-    "description": string,
-    "elements": array
-  },
-
-  "environment": {
-    "time": string,
-    "location_type": string,
-    "atmosphere": string
-  },
-
-  "lighting": {
-    "type": string,
-    "intensity": string,
-    "color": string
-  },
-
-  "camera": {
-    "shot_type": string,
-    "lens": string,
-    "angle": string
-  },
-
-  "style": {
-    "genre": string,
-    "influences": array,
-    "render_type": string
-  },
-
-  "generation_prompt": {
-    "prompt": string,
-    "negative_prompt": string
-  },
-
-  "variants": array | null
+  "action": "respond | ask | structured",
+  "message": "string",
+  "data": object | null
 }
 
-CRITICAL:
-- NEVER return empty objects
-- ALWAYS expand creatively
-- ALWAYS infer details for cyberpunk, cinematic, etc.
-- RETURN ONLY JSON
+RULES:
+
+1. If user request is unclear or missing details:
+   - action = "ask"
+   - message = short clarification question
+   - data = null
+
+2. If user request is clear and simple:
+   - action = "respond"
+   - message = final answer (prompt, explanation, or guidance)
+   - data = null
+
+3. If user explicitly requests JSON, structured prompt, or advanced generation:
+   - action = "structured"
+   - message = short explanation (optional)
+   - data = full structured prompt JSON
+
+4. NEVER force structured output unless requested or clearly needed.
+
+5. Always prioritize helping the user over formatting.
+
+Return ONLY JSON.
+
+If you cannot comply with the request or format, return EXACTLY:
+
+{"action":"ask","message":"Please clarify your request.","data":null}
 """
 
 
@@ -94,96 +68,62 @@ def get_client():
 
 
 # -------------------------
-# SAFE PARSER (NO REGEX)
-# -------------------------
-def safe_json_parse(text: str):
-
-    # 🧠 STEP 1: guard empty response
-    if not text or not text.strip():
-        raise ValueError("LLM returned empty response")
-
-    text = text.strip()
-
-    # 🧠 STEP 2: remove markdown fences if present
-    if "```" in text:
-        parts = text.split("```")
-        for part in parts:
-            part = part.strip()
-            if part.startswith("{"):
-                text = part
-                break
-
-    # 🧠 STEP 3: try strict JSON parse
-    try:
-        return json.loads(text)
-
-    except JSONDecodeError:
-
-        # 🧠 STEP 4: last-resort extraction (SAFE, not regex greedy)
-        start = text.find("{")
-        end = text.rfind("}")
-
-        if start == -1 or end == -1:
-            raise ValueError(f"NO JSON FOUND IN RESPONSE:\n{text}")
-
-        candidate = text[start:end + 1]
-
-        try:
-            return json.loads(candidate)
-        except Exception:
-            raise ValueError(f"INVALID JSON AFTER RECOVERY:\n{text}")
-
-# -------------------------
 # LLM COMPILER
 # -------------------------
-def compile_prompt(prompt: str, target: str):
+def compile_prompt(prompt: str):
     client = get_client()
 
-    user_message = f"""
-TYPE: {target}
-PROMPT: {prompt}
-"""
+    base_messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+
+    last_error = None
+    last_content = None
 
     for attempt in range(MAX_RETRIES):
+        messages = list(base_messages)
+
+        if last_error:
+            messages.append({
+                "role": "user",
+                "content": f"""
+Your previous output was invalid JSON.
+
+Return ONLY valid JSON in this format:
+
+{{
+  "action": "respond | ask | structured",
+  "message": "string",
+  "data": object | null
+}}
+
+Error:
+{last_error}
+"""
+            })
 
         response = client.chat.completions.create(
             model="deepseek/deepseek-chat",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0.2,
+            messages=messages,
+            temperature=0.0,
         )
 
         content = response.choices[0].message.content
-        if not content:
-            raise ValueError("EMPTY LLM RESPONSE")
-
-        print("LLM RAW OUTPUT:", content)
-        data = safe_json_parse(content)
+        last_content = content
 
         try:
-            # ONLY structural validation
-            validated = GenerationPrompt(**data)
-
+            data = extract_json(content)
+            validated = CopilotDecision(**data)
             return validated.model_dump()
 
         except Exception as e:
+            last_error = str(e)
 
-            user_message = f"""
-Your previous JSON is INVALID.
-
-FIX STRICTLY:
-
-ERROR:
-{str(e)}
-
-OUTPUT MUST MATCH SCHEMA EXACTLY.
-
-BAD OUTPUT:
-{json.dumps(data, indent=2)}
-
-Return ONLY valid JSON.
-"""
-
-    raise ValueError("LLM failed after retries")
+    # LAST RESORT — LLM REPAIR
+    try:
+        repaired = repair_json_with_llm(last_content, last_error)
+        validated = CopilotDecision(**repaired)
+        return validated.model_dump()
+    except Exception:
+        raise ValueError("LLM failed after retries and repair")
