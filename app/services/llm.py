@@ -1,6 +1,6 @@
 import json
 from openai import OpenAI
-from json import JSONDecodeError
+from app.llm_client import get_client
 
 from app.schemas.contract import CopilotDecision
 from app.services.llm_repair import extract_json, repair_json_with_llm
@@ -53,18 +53,6 @@ If you cannot comply with the request or format, return EXACTLY:
 {"action":"ask","message":"Please clarify your request.","data":null}
 """
 
-
-# -------------------------
-# CLIENT
-# -------------------------
-def get_client():
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY missing")
-
-    return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
-    )
 
 
 # -------------------------

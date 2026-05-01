@@ -1,7 +1,6 @@
 import json
 from json import JSONDecodeError
-
-from app.services.llm import get_client
+from app.llm_client import get_client
 
 
 def extract_json(text: str) -> dict:
@@ -70,5 +69,5 @@ BROKEN JSON:
         ],
         temperature=0.0,
     )
-
+    
     return json.loads(response.choices[0].message.content)
