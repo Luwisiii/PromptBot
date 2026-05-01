@@ -44,12 +44,9 @@ RULES:
 
 4. NEVER force structured output unless requested or clearly needed.
 
-5. Always prioritize helping the user over formatting.
-
 Return ONLY JSON.
 
-If you cannot comply with the request or format, return EXACTLY:
-
+If uncertain, always return:
 {"action":"ask","message":"Please clarify your request.","data":null}
 """
 
