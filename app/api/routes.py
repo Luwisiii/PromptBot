@@ -50,12 +50,30 @@ def classify_prompt_intent(text: str) -> str:
 @router.post("/assist")
 async def assist(req: AssistRequest):
 
-    intent = classify_prompt_intent(req.prompt)
+    # =====================================================
+    # 🔥 SESSION-FIRST LOGIC (IMPORTANT FIX)
+    # =====================================================
+    session_exists = False
 
+    if req.session_id:
+        session = load_session(req.session_id)
+        session_exists = session is not None
+    else:
+        session = None
+
+    # If session exists → ALWAYS allow LLM flow
+    if session_exists:
+        intent = "proceed"
+    else:
+        intent = classify_prompt_intent(req.prompt)
+
+    # -----------------------------
+    # DOMAIN GATE
+    # -----------------------------
     if intent == "reject":
         return {
             "action": "respond",
-            "message": "This PromptBot is for multimedia prompt creation. Ask for image, video, or audio prompts.",
+            "message": "This PromptBot is for multimedia prompt creation (image, video, audio).",
             "data": None
         }
 
@@ -78,18 +96,15 @@ async def assist(req: AssistRequest):
     try:
 
         # -----------------------------
-        # SESSION MEMORY LOAD
+        # MEMORY INJECTION (SESSION EDIT MODE)
         # -----------------------------
         final_prompt = req.prompt
 
-        if req.session_id:
-            session = load_session(req.session_id)
+        if session_exists:
+            last_prompt = session.get("last_prompt")
 
-            if session and isinstance(session, dict):
-                last_prompt = session.get("last_prompt")
-
-                if last_prompt:
-                    final_prompt = f"""
+            if last_prompt:
+                final_prompt = f"""
 You are editing a previously generated prompt.
 
 === PREVIOUS PROMPT ===
@@ -98,15 +113,15 @@ You are editing a previously generated prompt.
 === USER MODIFICATION ===
 {req.prompt}
 
-Rules:
-- Only modify what is necessary
+RULES:
 - Keep structure consistent
-- Preserve style and quality
+- Apply minimal necessary changes
+- Preserve cinematic quality
 """
-                    add_trace(task_id, "memory_applied", {
-                        "last_prompt": last_prompt,
-                        "user_input": req.prompt
-                    })
+                add_trace(task_id, "memory_applied", {
+                    "last_prompt": last_prompt,
+                    "user_input": req.prompt
+                })
 
         # -----------------------------
         # LLM CALL
@@ -117,14 +132,14 @@ Rules:
         add_trace(task_id, "decision_ready", decision)
 
         # -----------------------------
-        # SESSION SAVE (IMPORTANT FIX)
+        # SESSION SAVE (FIXED)
         # -----------------------------
         if req.session_id:
             save_session(
-            session_id=req.session_id,
-            last_prompt=decision.get("message", ""),
-            decision=decision
-        )
+                session_id=req.session_id,
+                last_prompt=decision.get("message", ""),
+                decision=decision
+            )
 
             add_trace(task_id, "memory_saved", {
                 "session_id": req.session_id
