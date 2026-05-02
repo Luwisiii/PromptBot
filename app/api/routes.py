@@ -121,10 +121,10 @@ Rules:
         # -----------------------------
         if req.session_id:
             save_session(
-                session_id=req.session_id,
-                last_prompt=decision.get("message", ""),
-                decision=decision
-            )
+            session_id=req.session_id,
+            last_prompt=decision.get("message", ""),
+            decision=decision
+        )
 
             add_trace(task_id, "memory_saved", {
                 "session_id": req.session_id

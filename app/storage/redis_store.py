@@ -82,10 +82,10 @@ def load_session(session_id: str):
     return json.loads(data) if data else None
 
 
-def save_session(session_id: str, last_prompt: str, structured_prompt: dict):
+def save_session(session_id: str, last_prompt: str, decision: dict = None):
     payload = {
         "last_prompt": last_prompt,
-        "last_structured": structured_prompt,
+        "last_decision": decision,
         "updated_at": _now()
     }
 
