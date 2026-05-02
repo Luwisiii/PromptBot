@@ -41,7 +41,7 @@ def init_task(task_id, data):
         "output": None,
         "error": None
     }
-
+    
     _save(task_id, payload)
 
 

@@ -10,129 +10,58 @@ from app.storage.redis_store import (
     load_session,
     save_session
 )
-
 from app.storage.trace_store import init_trace, add_trace
 from app.services.llm import compile_prompt
+from app.services.intent import detect_intent
 
 router = APIRouter()
 
 
-# -----------------------------
-# DOMAIN GATE
-# -----------------------------
-def classify_prompt_intent(text: str) -> str:
-    t = text.lower().strip()
-
-    multimedia_hints = [
-        "image", "photo", "picture", "art", "illustration",
-        "video", "cinematic", "film", "scene", "shot",
-        "audio", "sound", "music", "voice",
-    ]
-
-    generation_verbs = [
-        "make", "create", "generate", "build", "design", "write", "craft"
-    ]
-
-    if any(v in t for v in generation_verbs) or "prompt" in t:
-        if any(h in t for h in multimedia_hints):
-            return "proceed"
-        return "ask_intent"
-
-    if any(h in t for h in multimedia_hints):
-        return "proceed"
-
-    return "reject"
-
-
-# -----------------------------
-# ASSIST ENDPOINT
-# -----------------------------
 @router.post("/assist")
 async def assist(req: AssistRequest):
 
-    # =====================================================
-    # 🔥 SESSION-FIRST LOGIC (IMPORTANT FIX)
-    # =====================================================
-    session_exists = False
+    session = load_session(req.session_id) if req.session_id else None
+    intent = detect_intent(req.prompt, session)
 
-    if req.session_id:
-        session = load_session(req.session_id)
-        session_exists = session is not None
-    else:
-        session = None
-
-    # If session exists → ALWAYS allow LLM flow
-    if session_exists:
-        intent = "proceed"
-    else:
-        intent = classify_prompt_intent(req.prompt)
-
-    # -----------------------------
-    # DOMAIN GATE
-    # -----------------------------
-    if intent == "reject":
-        return {
-            "action": "respond",
-            "message": "This PromptBot is for multimedia prompt creation (image, video, audio).",
-            "data": None
-        }
-
-    if intent == "ask_intent":
-        return {
-            "action": "ask",
-            "message": "What type of prompt would you like? (image, video, or audio)",
-            "data": None
-        }
-
-    # -----------------------------
-    # TASK INIT
-    # -----------------------------
     task_id = str(uuid.uuid4())
-
     init_task(task_id, req.model_dump())
     init_trace(task_id)
-    add_trace(task_id, "init_task", req.model_dump())
 
     try:
-
         # -----------------------------
-        # MEMORY INJECTION (SESSION EDIT MODE)
+        # 🧠 EDIT MODE (NO GATE, NO LLM CONFUSION)
         # -----------------------------
-        final_prompt = req.prompt
+        if intent == "EDIT_PROMPT":
+            last_prompt = session["last_prompt"]
 
-        if session_exists:
-            last_prompt = session.get("last_prompt")
+            edit_instruction = f"""
+You are editing an existing multimedia prompt.
 
-            if last_prompt:
-                final_prompt = f"""
-You are editing a previously generated prompt.
-
-=== PREVIOUS PROMPT ===
+=== ORIGINAL PROMPT ===
 {last_prompt}
 
-=== USER MODIFICATION ===
+=== USER CHANGE ===
 {req.prompt}
 
 RULES:
-- Keep structure consistent
-- Apply minimal necessary changes
-- Preserve cinematic quality
+- Keep structure
+- Apply only the change
+- Preserve quality
 """
-                add_trace(task_id, "memory_applied", {
-                    "last_prompt": last_prompt,
-                    "user_input": req.prompt
-                })
+
+            decision = compile_prompt(edit_instruction)
 
         # -----------------------------
-        # LLM CALL
+        # 🆕 NEW PROMPT MODE
         # -----------------------------
-        decision = compile_prompt(final_prompt)
+        else:
+            decision = compile_prompt(req.prompt)
 
         update_task(task_id, {"decision": decision})
         add_trace(task_id, "decision_ready", decision)
 
         # -----------------------------
-        # SESSION SAVE (FIXED)
+        # 💾 SAVE SESSION MEMORY
         # -----------------------------
         if req.session_id:
             save_session(
@@ -140,10 +69,6 @@ RULES:
                 last_prompt=decision.get("message", ""),
                 decision=decision
             )
-
-            add_trace(task_id, "memory_saved", {
-                "session_id": req.session_id
-            })
 
         return {
             "task_id": task_id,
@@ -153,14 +78,11 @@ RULES:
 
     except Exception as e:
         mark_failed(task_id, str(e))
-        add_trace(task_id, "failed", {"error": str(e)})
-
         return {
             "task_id": task_id,
             "status": "FAILED",
             "error": str(e)
         }
-
 
 # -----------------------------
 # RESULT ENDPOINT

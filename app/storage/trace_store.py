@@ -24,7 +24,7 @@ def add_trace(task_id: str, step: str, data: dict = None):
         "data": data or {},
         "timestamp": _now()
     })
-
+    
     r.set(_key(task_id), json.dumps(trace))
 
 
