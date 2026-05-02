@@ -18,16 +18,37 @@ router = APIRouter()
 # -----------------------------
 # DOMAIN GATE (VERY IMPORTANT)
 # -----------------------------
-def looks_like_prompt(text: str) -> bool:
-    keywords = [
-        "image", "video", "audio",
-        "scene", "cinematic", "lighting",
-        "camera", "shot", "style",
-        "render", "generate", "prompt",
-        "visual", "sound"
+def classify_prompt_intent(text: str) -> str:
+    """
+    Returns:
+    - proceed      -> clear multimedia prompt
+    - ask_intent   -> user wants a prompt but gave no details
+    - reject       -> unrelated to generation
+    """
+
+    t = text.lower().strip()
+
+    multimedia_hints = [
+        "image", "photo", "picture", "art", "illustration",
+        "video", "cinematic", "film", "scene", "shot",
+        "audio", "sound", "music", "voice",
     ]
-    text = text.lower()
-    return any(k in text for k in keywords)
+
+    generation_verbs = [
+        "make", "create", "generate", "build", "design", "write", "craft"
+    ]
+
+    # User wants to create something
+    if any(v in t for v in generation_verbs) or "prompt" in t:
+        if any(h in t for h in multimedia_hints):
+            return "proceed"
+        return "ask_intent"
+
+    # Direct multimedia description
+    if any(h in t for h in multimedia_hints):
+        return "proceed"
+
+    return "reject"
 
 
 # -----------------------------
@@ -37,13 +58,21 @@ def looks_like_prompt(text: str) -> bool:
 async def assist(req: AssistRequest):
 
     # ❌ NOT a multimedia prompt → do NOT create task, do NOT call LLM
-    if not looks_like_prompt(req.prompt):
+    intent = classify_prompt_intent(req.prompt)
+
+    if intent == "reject":
         return {
-            "action": "ask",
-            "message": "Please provide a multimedia prompt to generate (image, video, or audio).",
+            "action": "respond",
+            "message": "This PromptBot is for multimedia prompt creation. Ask me to create an image, video, or audio prompt.",
             "data": None
         }
 
+    if intent == "ask_intent":
+        return {
+            "action": "ask",
+            "message": "What type of prompt would you like me to create? (image, video, or audio)",
+            "data": None
+        }
     # ✅ Valid multimedia request → becomes a tracked task
     task_id = str(uuid.uuid4())
 
