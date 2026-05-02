@@ -1,9 +1,6 @@
 import json
 import time
-import redis
-from app.core.config import REDIS_URL
-
-r = redis.from_url(REDIS_URL, decode_responses=True)
+from app.storage.redis_client import r
 
 
 def _now():
@@ -20,7 +17,6 @@ def init_trace(task_id: str):
 
 def add_trace(task_id: str, step: str, data: dict = None):
     existing = r.get(_key(task_id))
-
     trace = json.loads(existing) if existing else []
 
     trace.append({

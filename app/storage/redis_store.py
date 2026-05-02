@@ -1,18 +1,17 @@
 import json
 import time
-import redis
-from app.core.config import REDIS_URL
-
-# ✅ FIX: use Render / Upstash Redis instead of localhost
-r = redis.from_url(REDIS_URL, decode_responses=True)
+from app.storage.redis_client import r
 
 
 def _now():
     return time.time()
 
 
+# -------------------------
+# TASK STORAGE
+# -------------------------
 def _save(task_id, data):
-    r.set(f"task:{task_id}", json.dumps(data))
+    r.setex(f"task:{task_id}", 3600, json.dumps(data))  # TTL added
 
 
 def get_task(task_id):
@@ -47,9 +46,7 @@ def init_task(task_id, data):
 
 
 def set_processing(task_id):
-    update_task(task_id, {
-        "status": "PROCESSING"
-    })
+    update_task(task_id, {"status": "PROCESSING"})
 
 
 def save_result(task_id, result):
@@ -68,3 +65,32 @@ def mark_failed(task_id, error):
         "status": "FAILED",
         "error": str(error)
     })
+
+
+# -------------------------
+# SESSION MEMORY (FIXED)
+# -------------------------
+SESSION_TTL = 1800  # 30 min
+
+
+def _session_key(session_id: str):
+    return f"session:{session_id}"
+
+
+def load_session(session_id: str):
+    data = r.get(_session_key(session_id))
+    return json.loads(data) if data else None
+
+
+def save_session(session_id: str, last_prompt: str, structured_prompt: dict):
+    payload = {
+        "last_prompt": last_prompt,
+        "last_structured": structured_prompt,
+        "updated_at": _now()
+    }
+
+    r.setex(_session_key(session_id), SESSION_TTL, json.dumps(payload))
+
+
+def clear_session(session_id: str):
+    r.delete(_session_key(session_id))

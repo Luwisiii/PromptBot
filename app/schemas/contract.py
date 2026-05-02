@@ -4,7 +4,8 @@ from typing import Literal, Optional, Dict, Any
 
 class AssistRequest(BaseModel):
     prompt: str
-
+    session_id: Optional[str] = None
+    
     @field_validator("prompt")
     @classmethod
     def validate_prompt(cls, v):

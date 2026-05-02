@@ -6,7 +6,9 @@ from app.storage.redis_store import (
     init_task,
     mark_failed,
     get_task,
-    update_task
+    update_task,
+    load_session,
+    save_session
 )
 
 from app.storage.trace_store import init_trace, add_trace
@@ -16,16 +18,9 @@ router = APIRouter()
 
 
 # -----------------------------
-# DOMAIN GATE (VERY IMPORTANT)
+# DOMAIN GATE
 # -----------------------------
 def classify_prompt_intent(text: str) -> str:
-    """
-    Returns:
-    - proceed      -> clear multimedia prompt
-    - ask_intent   -> user wants a prompt but gave no details
-    - reject       -> unrelated to generation
-    """
-
     t = text.lower().strip()
 
     multimedia_hints = [
@@ -38,13 +33,11 @@ def classify_prompt_intent(text: str) -> str:
         "make", "create", "generate", "build", "design", "write", "craft"
     ]
 
-    # User wants to create something
     if any(v in t for v in generation_verbs) or "prompt" in t:
         if any(h in t for h in multimedia_hints):
             return "proceed"
         return "ask_intent"
 
-    # Direct multimedia description
     if any(h in t for h in multimedia_hints):
         return "proceed"
 
@@ -57,23 +50,25 @@ def classify_prompt_intent(text: str) -> str:
 @router.post("/assist")
 async def assist(req: AssistRequest):
 
-    # ❌ NOT a multimedia prompt → do NOT create task, do NOT call LLM
     intent = classify_prompt_intent(req.prompt)
 
     if intent == "reject":
         return {
             "action": "respond",
-            "message": "This PromptBot is for multimedia prompt creation. Ask me to create an image, video, or audio prompt.",
+            "message": "This PromptBot is for multimedia prompt creation. Ask for image, video, or audio prompts.",
             "data": None
         }
 
     if intent == "ask_intent":
         return {
             "action": "ask",
-            "message": "What type of prompt would you like me to create? (image, video, or audio)",
+            "message": "What type of prompt would you like? (image, video, or audio)",
             "data": None
         }
-    # ✅ Valid multimedia request → becomes a tracked task
+
+    # -----------------------------
+    # TASK INIT
+    # -----------------------------
     task_id = str(uuid.uuid4())
 
     init_task(task_id, req.model_dump())
@@ -81,10 +76,59 @@ async def assist(req: AssistRequest):
     add_trace(task_id, "init_task", req.model_dump())
 
     try:
-        decision = compile_prompt(req.prompt)
+
+        # -----------------------------
+        # SESSION MEMORY LOAD
+        # -----------------------------
+        final_prompt = req.prompt
+
+        if req.session_id:
+            session = load_session(req.session_id)
+
+            if session and isinstance(session, dict):
+                last_prompt = session.get("last_prompt")
+
+                if last_prompt:
+                    final_prompt = f"""
+You are editing a previously generated prompt.
+
+=== PREVIOUS PROMPT ===
+{last_prompt}
+
+=== USER MODIFICATION ===
+{req.prompt}
+
+Rules:
+- Only modify what is necessary
+- Keep structure consistent
+- Preserve style and quality
+"""
+                    add_trace(task_id, "memory_applied", {
+                        "last_prompt": last_prompt,
+                        "user_input": req.prompt
+                    })
+
+        # -----------------------------
+        # LLM CALL
+        # -----------------------------
+        decision = compile_prompt(final_prompt)
 
         update_task(task_id, {"decision": decision})
         add_trace(task_id, "decision_ready", decision)
+
+        # -----------------------------
+        # SESSION SAVE (IMPORTANT FIX)
+        # -----------------------------
+        if req.session_id:
+            save_session(
+                session_id=req.session_id,
+                last_prompt=decision.get("message", ""),
+                decision=decision
+            )
+
+            add_trace(task_id, "memory_saved", {
+                "session_id": req.session_id
+            })
 
         return {
             "task_id": task_id,
