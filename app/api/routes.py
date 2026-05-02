@@ -49,7 +49,7 @@ RULES:
 - Preserve quality
 """
 
-            decision = compile_prompt(edit_instruction)
+            decision = compile_prompt(edit_instruction, edit_mode=True)
 
         # -----------------------------
         # 🆕 NEW PROMPT MODE

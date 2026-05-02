@@ -4,30 +4,23 @@ from app.llm_client import get_client
 
 from app.schemas.contract import CopilotDecision
 from app.services.llm_repair import extract_json, repair_json_with_llm
-from app.core.config import OPENROUTER_API_KEY
 
 MAX_RETRIES = 3
 
 
 # -------------------------
-# STRICT SYSTEM PROMPT
+# CREATION SYSTEM PROMPT
 # -------------------------
 SYSTEM_PROMPT = """
 You are PromptBot — a strict AI Copilot that ONLY helps users create prompts
 for multimedia generation systems (image, video, audio).
 
 You are NOT a general knowledge assistant.
-You do NOT answer questions.
-You do NOT explain concepts.
-You do NOT provide facts.
-You ONLY help craft or structure prompts for generators.
 
 If the user message is NOT about generating or refining a multimedia prompt,
 you MUST return EXACTLY:
 
 {"action":"ask","message":"Please provide a multimedia prompt to generate (image, video, or audio).","data":null}
-
-You must analyze the user request and decide the best next step.
 
 You MUST output ONLY valid JSON in this format:
 
@@ -36,47 +29,46 @@ You MUST output ONLY valid JSON in this format:
   "message": "string",
   "data": object | null
 }
-
-RULES:
-
-1. If the request is unclear for multimedia generation:
-   - action = "ask"
-   - message = short clarification question
-   - data = null
-
-2. If the request is clearly about multimedia prompt creation:
-   - action = "respond"
-   - message = the improved prompt or guidance
-   - data = null
-
-3. If the user explicitly asks for JSON, structured prompt, or generator-ready data:
-   - action = "structured"
-   - message = short explanation (optional)
-   - data = full structured prompt JSON
-
-Return ONLY JSON.
-
-If uncertain, always return:
-{"action":"ask","message":"Please clarify your request.","data":null}
 """
 
 
-def looks_like_prompt(text: str) -> bool:
-    keywords = [
-        "image", "video", "audio", "scene", "cinematic",
-        "style", "lighting", "camera", "shot", "generate",
-        "prompt", "render", "visual", "sound"
-    ]
-    return any(k in text.lower() for k in keywords)
+# -------------------------
+# ✨ EDIT SYSTEM PROMPT (THE FIX)
+# -------------------------
+EDIT_SYSTEM_PROMPT = """
+You are PromptBot in EDIT MODE.
+
+The user is MODIFYING an existing multimedia prompt.
+
+You will be given:
+- The original prompt
+- The user change
+
+Your job is to APPLY the change with MINIMAL edits.
+
+You MUST NOT ask for a new prompt.
+You MUST NOT reject the request.
+
+You MUST return ONLY valid JSON:
+
+{
+  "action": "respond",
+  "message": "the fully updated prompt",
+  "data": null
+}
+"""
+
 
 # -------------------------
 # LLM COMPILER
 # -------------------------
-def compile_prompt(prompt: str):
+def compile_prompt(prompt: str, edit_mode: bool = False):
     client = get_client()
 
+    system_prompt = EDIT_SYSTEM_PROMPT if edit_mode else SYSTEM_PROMPT
+
     base_messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
 
