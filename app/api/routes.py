@@ -37,7 +37,7 @@ async def assist(req: AssistRequest):
             edit_instruction = f"""
         === ORIGINAL PROMPT ===
         {last_prompt}
-        
+
         === USER CHANGE ===
         {req.prompt}
         """
