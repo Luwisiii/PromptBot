@@ -68,7 +68,7 @@ def mark_failed(task_id, error):
 
 
 # -------------------------
-# SESSION MEMORY (FIXED)
+# SESSION STATE STORAGE
 # -------------------------
 SESSION_TTL = 1800  # 30 min
 
@@ -79,13 +79,14 @@ def _session_key(session_id: str):
 
 def load_session(session_id: str):
     data = r.get(_session_key(session_id))
-    return json.loads(data) if data else None
+    if not data:
+        return None
+    return json.loads(data).get("state")
 
 
-def save_session(session_id: str, last_prompt: str, decision: dict = None):
+def save_session(session_id: str, state: dict):
     payload = {
-        "last_prompt": last_prompt,
-        "last_decision": decision,
+        "state": state,
         "updated_at": _now()
     }
 

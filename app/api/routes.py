@@ -29,37 +29,33 @@ async def assist(req: AssistRequest):
 
     try:
         # -----------------------------
-        # 🧠 EDIT MODE (NO GATE, NO LLM CONFUSION)
+        # 🧠 EDIT MODE
         # -----------------------------
         if intent == "EDIT_PROMPT":
-            last_prompt = session["last_prompt"]
-            
-            edit_instruction = f"""
-        === ORIGINAL PROMPT ===
-        {last_prompt}
+            current_state = session
 
-        === USER CHANGE ===
-        {req.prompt}
-        """
-            
-            decision = compile_prompt(edit_instruction, edit_mode=True)
-            # -----------------------------
+            decision = compile_prompt(
+                req.prompt,
+                edit_mode=True,
+                state=current_state
+            )
+
+        # -----------------------------
         # 🆕 NEW PROMPT MODE
         # -----------------------------
         else:
-            decision = compile_prompt(req.prompt)
+            decision = compile_prompt(req.prompt, state=None)
 
         update_task(task_id, {"decision": decision})
         add_trace(task_id, "decision_ready", decision)
 
         # -----------------------------
-        # 💾 SAVE SESSION MEMORY
+        # 💾 SAVE FULL STATE
         # -----------------------------
         if req.session_id:
             save_session(
                 session_id=req.session_id,
-                last_prompt=decision.get("message", ""),
-                decision=decision
+                state=decision.get("state", {})
             )
 
         return {
@@ -75,7 +71,6 @@ async def assist(req: AssistRequest):
             "status": "FAILED",
             "error": str(e)
         }
-
 # -----------------------------
 # RESULT ENDPOINT
 # -----------------------------
