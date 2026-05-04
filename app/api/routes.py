@@ -95,3 +95,8 @@ async def get_trace_result(task_id: str):
         "task_id": task_id,
         "trace": get_trace(task_id)
     }
+    
+@router.get("/session/{session_id}")
+async def debug_session(session_id: str):
+    from app.storage.redis_store import load_session
+    return load_session(session_id)
