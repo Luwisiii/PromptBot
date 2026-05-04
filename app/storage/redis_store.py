@@ -8,10 +8,10 @@ def _now():
 
 
 # -------------------------
-# TASK STORAGE
+# TASK STORAGE (UNCHANGED)
 # -------------------------
 def _save(task_id, data):
-    r.setex(f"task:{task_id}", 3600, json.dumps(data))  # TTL added
+    r.setex(f"task:{task_id}", 3600, json.dumps(data))
 
 
 def get_task(task_id):
@@ -41,7 +41,7 @@ def init_task(task_id, data):
         "output": None,
         "error": None
     }
-    
+
     _save(task_id, payload)
 
 
@@ -68,7 +68,7 @@ def mark_failed(task_id, error):
 
 
 # -------------------------
-# SESSION STATE STORAGE
+# 🧠 SESSION STATE + DIFF SYSTEM
 # -------------------------
 SESSION_TTL = 1800  # 30 min
 
@@ -77,21 +77,73 @@ def _session_key(session_id: str):
     return f"session:{session_id}"
 
 
+# -------------------------
+# DIFF ENGINE (OPTION 2 CORE)
+# -------------------------
+def compute_diff(old: dict, new: dict) -> dict:
+    diff = {}
+
+    all_keys = set(old.keys()) | set(new.keys())
+
+    for k in all_keys:
+        old_val = old.get(k)
+        new_val = new.get(k)
+
+        if old_val != new_val:
+            diff[k] = {
+                "from": old_val,
+                "to": new_val
+            }
+
+    return diff
+
+
+# -------------------------
+# LOAD SESSION
+# -------------------------
 def load_session(session_id: str):
     data = r.get(_session_key(session_id))
     if not data:
         return None
-    return json.loads(data).get("state")
+
+    return json.loads(data)
 
 
+# -------------------------
+# SAVE SESSION (WITH DIFF TRACKING)
+# -------------------------
 def save_session(session_id: str, state: dict):
+    key = _session_key(session_id)
+
+    existing = r.get(key)
+    existing_data = json.loads(existing) if existing else {}
+
+    old_state = existing_data.get("state", {})
+    history = existing_data.get("history", [])
+    
+    diff = compute_diff(old_state, state)
+
+    snapshot = {
+        "state": state,
+        "diff": diff,
+        "timestamp": _now()
+    }
+
+    history.append(snapshot)
+    
+    history = history[-20:]
+
     payload = {
         "state": state,
+        "history": history,
         "updated_at": _now()
     }
 
-    r.setex(_session_key(session_id), SESSION_TTL, json.dumps(payload))
+    r.setex(key, SESSION_TTL, json.dumps(payload))
 
 
+# -------------------------
+# CLEAR SESSION
+# -------------------------
 def clear_session(session_id: str):
     r.delete(_session_key(session_id))
