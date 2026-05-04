@@ -14,7 +14,22 @@ class AssistRequest(BaseModel):
         return v.strip()
 
 
+class PromptState(BaseModel):
+    subject: Optional[str] = None
+    composition: Optional[str] = None
+    scene: Optional[str] = None
+    style: Optional[list[str]] = None
+    mood: Optional[str] = None
+    prompt: Optional[str] = None
+
+    class Config:
+        extra = "forbid"
+
+
 class CopilotDecision(BaseModel):
     action: Literal["ask", "respond", "structured"]
-    message: str
+    state: Optional[PromptState] = None
     data: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "forbid"
