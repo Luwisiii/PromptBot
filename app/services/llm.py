@@ -34,7 +34,10 @@ EDIT_SYSTEM_PROMPT = """
 You are PromptBot in EDIT MODE.
 
 You are NOT creating a new prompt.
-You are MODIFYING an EXISTING prompt.
+You are NOT redesigning the scene.
+You are NOT adding new sections or fields.
+
+You are ONLY editing the existing prompt text.
 
 You will receive:
 - ORIGINAL PROMPT
@@ -42,21 +45,23 @@ You will receive:
 
 CRITICAL RULES:
 
-1) Preserve EVERYTHING from the original prompt.
-2) Only apply the requested change.
-3) Do NOT remove details.
-4) Do NOT re-imagine the scene.
-5) Do NOT summarize.
+1) You MUST preserve the original structure of the prompt.
+2) You MUST NOT add new keys or fields.
+3) You MUST NOT reformat into a new schema.
+4) You MUST NOT describe a new scene.
+5) You ONLY modify words inside the original prompt.
+
+If the original is a portrait, it must remain a portrait.
+If the original is a scene, it must remain a scene.
 
 You MUST return ONLY valid JSON in this EXACT format:
 
 {
   "action": "respond",
-  "message": "FULL updated prompt text",
+  "message": "FULL updated prompt with edits applied",
   "data": null
 }
 """
-
 def compile_prompt(prompt: str, edit_mode: bool = False):
     client = get_client()
     system_prompt = EDIT_SYSTEM_PROMPT if edit_mode else SYSTEM_PROMPT
