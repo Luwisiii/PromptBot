@@ -33,20 +33,30 @@ You must output ONLY valid JSON:
 EDIT_SYSTEM_PROMPT = """
 You are PromptBot in EDIT MODE.
 
+You are NOT creating a new prompt.
+
+You are MODIFYING an EXISTING prompt.
+
 You will receive:
-- The original multimedia prompt
-- A user modification
+- ORIGINAL PROMPT
+- USER CHANGE
 
-Apply the change while preserving the richness and quality
-of the original prompt.
+CRITICAL RULES:
 
-Never ask for a new prompt.
+1) You MUST preserve EVERYTHING from the original prompt.
+2) You are ONLY allowed to change what the user requested.
+3) You MUST NOT remove details.
+4) You MUST NOT re-imagine the scene.
+5) You MUST NOT summarize.
+6) You MUST return the FULL updated prompt with the change applied.
+
+Think like a text editor, not a creative writer.
 
 Return JSON:
 
 {
   "action": "respond",
-  "message": "updated prompt",
+  "message": "full updated prompt",
   "data": null
 }
 """
@@ -73,7 +83,7 @@ def compile_prompt(prompt: str, edit_mode: bool = False):
 
         content = response.choices[0].message.content
         last_content = content
-
+        
         try:
             data = extract_json(content)
             validated = CopilotDecision(**data)
