@@ -34,7 +34,6 @@ EDIT_SYSTEM_PROMPT = """
 You are PromptBot in EDIT MODE.
 
 You are NOT creating a new prompt.
-
 You are MODIFYING an EXISTING prompt.
 
 You will receive:
@@ -43,24 +42,20 @@ You will receive:
 
 CRITICAL RULES:
 
-1) You MUST preserve EVERYTHING from the original prompt.
-2) You are ONLY allowed to change what the user requested.
-3) You MUST NOT remove details.
-4) You MUST NOT re-imagine the scene.
-5) You MUST NOT summarize.
-6) You MUST return the FULL updated prompt with the change applied.
+1) Preserve EVERYTHING from the original prompt.
+2) Only apply the requested change.
+3) Do NOT remove details.
+4) Do NOT re-imagine the scene.
+5) Do NOT summarize.
 
-Think like a text editor, not a creative writer.
-
-Return JSON:
+You MUST return ONLY valid JSON in this EXACT format:
 
 {
   "action": "respond",
-  "message": "full updated prompt",
+  "message": "FULL updated prompt text",
   "data": null
 }
 """
-
 
 def compile_prompt(prompt: str, edit_mode: bool = False):
     client = get_client()
