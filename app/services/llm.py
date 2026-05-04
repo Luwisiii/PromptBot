@@ -1,28 +1,26 @@
-import json
-from openai import OpenAI
 from app.llm_client import get_client
-
 from app.schemas.contract import CopilotDecision
 from app.services.llm_repair import extract_json, repair_json_with_llm
 
-MAX_RETRIES = 3
+MAX_RETRIES = 2
 
 
-# -------------------------
-# CREATION SYSTEM PROMPT
-# -------------------------
 SYSTEM_PROMPT = """
-You are PromptBot — a strict AI Copilot that ONLY helps users create prompts
-for multimedia generation systems (image, video, audio).
+You are PromptBot — a Prompt Compiler for multimedia generation.
 
-You are NOT a general knowledge assistant.
+Your job is to interpret the user's message and transform it into
+a high-quality prompt for image, video, or audio generation.
 
-If the user message is NOT about generating or refining a multimedia prompt,
-you MUST return EXACTLY:
+The user may be vague, short, or conversational.
+You must intelligently interpret their intent.
 
-{"action":"ask","message":"Please provide a multimedia prompt to generate (image, video, or audio).","data":null}
+If the request is missing a CRITICAL detail that prevents you from
+building a good prompt, you may ask ONE short clarification question
+using the "ask" action.
 
-You MUST output ONLY valid JSON in this format:
+Otherwise, always compile the best possible prompt from what you have.
+
+You must output ONLY valid JSON:
 
 {
   "action": "respond | ask | structured",
@@ -32,75 +30,45 @@ You MUST output ONLY valid JSON in this format:
 """
 
 
-# -------------------------
-# ✨ EDIT SYSTEM PROMPT (THE FIX)
-# -------------------------
 EDIT_SYSTEM_PROMPT = """
 You are PromptBot in EDIT MODE.
 
-The user is MODIFYING an existing multimedia prompt.
+You will receive:
+- The original multimedia prompt
+- A user modification
 
-You will be given:
-- The original prompt
-- The user change
+Apply the change while preserving the richness and quality
+of the original prompt.
 
-Your job is to APPLY the change with MINIMAL edits.
+Never ask for a new prompt.
 
-You MUST NOT ask for a new prompt.
-You MUST NOT reject the request.
-
-You MUST return ONLY valid JSON:
+Return JSON:
 
 {
   "action": "respond",
-  "message": "the fully updated prompt",
+  "message": "updated prompt",
   "data": null
 }
 """
 
 
-# -------------------------
-# LLM COMPILER
-# -------------------------
 def compile_prompt(prompt: str, edit_mode: bool = False):
     client = get_client()
-
     system_prompt = EDIT_SYSTEM_PROMPT if edit_mode else SYSTEM_PROMPT
 
-    base_messages = [
+    messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
 
-    last_error = None
     last_content = None
+    last_error = None
 
-    for attempt in range(MAX_RETRIES):
-        messages = list(base_messages)
-
-        if last_error:
-            messages.append({
-                "role": "user",
-                "content": f"""
-Your previous output was invalid JSON.
-
-Return ONLY valid JSON in this format:
-
-{{
-  "action": "respond | ask | structured",
-  "message": "string",
-  "data": object | null
-}}
-
-Error:
-{last_error}
-"""
-            })
-
+    for _ in range(MAX_RETRIES):
         response = client.chat.completions.create(
             model="deepseek/deepseek-chat",
             messages=messages,
-            temperature=0.0,
+            temperature=0.7,
         )
 
         content = response.choices[0].message.content
@@ -110,14 +78,10 @@ Error:
             data = extract_json(content)
             validated = CopilotDecision(**data)
             return validated.model_dump()
-
         except Exception as e:
             last_error = str(e)
 
-    # LAST RESORT — LLM REPAIR
-    try:
-        repaired = repair_json_with_llm(last_content, last_error)
-        validated = CopilotDecision(**repaired)
-        return validated.model_dump()
-    except Exception:
-        raise ValueError("LLM failed after retries and repair")
+    # Final repair pass (no scolding retries)
+    repaired = repair_json_with_llm(last_content, last_error)
+    validated = CopilotDecision(**repaired)
+    return validated.model_dump()

@@ -13,7 +13,7 @@ def extract_json(text: str) -> dict:
         raise ValueError("Empty LLM response")
 
     text = text.strip()
-
+    
     # Remove markdown fences
     if "```" in text:
         parts = text.split("```")

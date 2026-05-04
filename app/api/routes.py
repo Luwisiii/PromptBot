@@ -33,25 +33,17 @@ async def assist(req: AssistRequest):
         # -----------------------------
         if intent == "EDIT_PROMPT":
             last_prompt = session["last_prompt"]
-
+            
             edit_instruction = f"""
-You are editing an existing multimedia prompt.
-
-=== ORIGINAL PROMPT ===
-{last_prompt}
-
-=== USER CHANGE ===
-{req.prompt}
-
-RULES:
-- Keep structure
-- Apply only the change
-- Preserve quality
-"""
-
+        === ORIGINAL PROMPT ===
+        {last_prompt}
+        
+        === USER CHANGE ===
+        {req.prompt}
+        """
+            
             decision = compile_prompt(edit_instruction, edit_mode=True)
-
-        # -----------------------------
+            # -----------------------------
         # 🆕 NEW PROMPT MODE
         # -----------------------------
         else:
