@@ -12,7 +12,6 @@ from app.storage.redis_store import (
 )
 from app.storage.trace_store import init_trace, add_trace
 from app.services.llm import compile_prompt
-from app.services.intent import detect_intent
 
 router = APIRouter()
 
@@ -36,10 +35,11 @@ async def assist(req: AssistRequest):
         update_task(task_id, {"decision": decision})
         add_trace(task_id, "decision_ready", decision)
 
-        if req.session_id:
+        # 🔥 safe session write
+        if req.session_id and decision.get("state"):
             save_session(
                 session_id=req.session_id,
-                state=decision.get("state", {})
+                state=decision["state"]
             )
 
         return {

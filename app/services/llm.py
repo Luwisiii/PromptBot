@@ -6,19 +6,34 @@ from app.services.llm_repair import extract_json, repair_json_with_llm
 MAX_RETRIES = 2
 
 
+# 🔥 STRICT SCHEMA-BASED PROMPT (FIXED)
 SYSTEM_PROMPT = """
-You are PromptBot — a Prompt State Compiler.
+You are PromptBot — a strict Prompt State Compiler.
 
-You evolve a compact creative state for multimedia generation.
+You MUST output ONLY valid JSON matching this schema:
 
-Rules:
-- Keep state SMALL and EFFICIENT
-- Do NOT repeat long prompts in state
-- You may enrich meaning but avoid token bloat
-- Always return valid JSON matching schema
+{
+  "action": "ask | respond | structured",
+  "state": {
+    "subject": string | null,
+    "composition": string | null,
+    "scene": string | null,
+    "style": list[string] | null,
+    "mood": string | null,
+    "prompt": string | null
+  },
+  "data": object | null
+}
+
+RULES:
+- NEVER include input, current_state, or any extra keys
+- ALWAYS return action, state, data
+- state must follow schema exactly
+- If unsure, use action = "respond"
 """
 
 
+# 🔥 TOKEN SAFETY (IMPORTANT FIX)
 def trim_state(state: dict | None):
     if not state:
         return None
@@ -29,7 +44,7 @@ def trim_state(state: dict | None):
         "scene": state.get("scene"),
         "style": (state.get("style") or [])[:5],
         "mood": state.get("mood"),
-        # 🚨 prevent token explosion
+        # 🚨 prevent recursive prompt explosion
         "prompt": None
     }
 
@@ -47,14 +62,14 @@ def compile_prompt(prompt: str, state: dict | None = None):
         {"role": "user", "content": json.dumps(user_payload)},
     ]
 
-    last_content = None
+    last_content = ""
 
     for _ in range(MAX_RETRIES):
         response = client.chat.completions.create(
-            model="qwen/qwen-2.5-coder-32b-instruct", 
+            model="qwen/qwen-2.5-coder-32b-instruct",  # ✅ correct OpenRouter ID
             messages=messages,
             temperature=0.6,
-            max_tokens=1200,  # 🔥 prevents OpenRouter 402
+            max_tokens=1200
         )
 
         content = response.choices[0].message.content or ""
@@ -67,8 +82,8 @@ def compile_prompt(prompt: str, state: dict | None = None):
         except Exception:
             continue
 
+    # 🔥 fallback repair path
     repaired = repair_json_with_llm(last_content, "invalid output")
-
-    # 🔥 second safety validation
     validated = CopilotDecision(**repaired)
+
     return validated.model_dump()

@@ -8,10 +8,11 @@ def extract_json(text: str) -> dict:
 
     text = text.strip()
 
+    # remove markdown
     if "```" in text:
-        parts = text.split("```")
-        text = parts[-1].strip()
+        text = text.split("```")[-1].strip()
 
+    # scan from end (prevents input echo bug)
     for i in range(len(text) - 1, -1, -1):
         if text[i] == "{":
             candidate = text[i:]
@@ -27,31 +28,34 @@ def repair_json_with_llm(bad_json_text: str, error: str):
     client = get_client()
 
     prompt = f"""
-Fix this JSON EXACTLY.
+You are a strict JSON repair engine.
+
+Return ONLY valid JSON matching the required schema.
 
 RULES:
-- Only JSON output
-- No markdown
-- No explanation
-- Must match schema
+- no markdown
+- no explanation
+- no extra keys
+- must be valid JSON
 
 ERROR:
 {error}
 
-BROKEN:
+BROKEN JSON:
 {bad_json_text}
 """
 
     response = client.chat.completions.create(
-        model="qwen/qwen-2.5-coder-32b-instruct", 
+        model="qwen/qwen-2.5-coder-32b-instruct",
         messages=[
-            {"role": "system", "content": "Strict JSON fixer."},
+            {"role": "system", "content": "You repair JSON only."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.0,
-        max_tokens=800,
+        max_tokens=800
     )
 
     fixed = response.choices[0].message.content or ""
 
+    # 🔥 reuse robust extractor
     return extract_json(fixed)
