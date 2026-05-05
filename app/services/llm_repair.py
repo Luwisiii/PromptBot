@@ -12,7 +12,7 @@ def extract_json(text: str) -> dict:
     if "```" in text:
         text = text.split("```")[-1].strip()
 
-    # 🔥 scan from end (avoids echoed input bug)
+    # scan backwards for valid JSON start
     for i in range(len(text) - 1, -1, -1):
         if text[i] == "{":
             candidate = text[i:]
@@ -34,8 +34,9 @@ RULES:
 - Output ONLY valid JSON
 - No markdown
 - No explanation
-- Must match required schema
+- Must match schema exactly
 - Replace missing values with null
+- NEVER use empty strings
 
 ERROR:
 {error}
@@ -55,5 +56,4 @@ BROKEN JSON:
     )
 
     fixed = response.choices[0].message.content or ""
-
     return extract_json(fixed)
