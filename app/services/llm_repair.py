@@ -53,7 +53,7 @@ BROKEN JSON:
 """
 
     response = client.chat.completions.create(
-        model="qwen/qwen2.5-coder-32b-instruct",
+        model="qwen/qwen2.5-coder-32b-instruct:free",
         messages=[
             {"role": "system", "content": "You repair invalid JSON structures."},
             {"role": "user", "content": prompt},
@@ -62,6 +62,6 @@ BROKEN JSON:
     )
 
     fixed = response.choices[0].message.content
-
+    
     # 🔥 CRITICAL FIX
     return extract_json(fixed)

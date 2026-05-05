@@ -43,7 +43,7 @@ def compile_prompt(prompt: str, state: dict | None = None):
 
     for _ in range(MAX_RETRIES):
         response = client.chat.completions.create(
-          model="qwen/qwen2.5-coder-32b-instruct",
+          model="qwen/qwen2.5-coder-32b-instruct:free",
           messages=messages,
           temperature=0.7,
       )
