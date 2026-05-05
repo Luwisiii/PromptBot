@@ -114,7 +114,7 @@ def load_session(session_id: str):
 # -------------------------
 def save_session(session_id: str, state: dict):
     key = _session_key(session_id)
-
+    
     existing = r.get(key)
     existing_data = json.loads(existing) if existing else {}
 

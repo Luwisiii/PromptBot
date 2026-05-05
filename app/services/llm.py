@@ -5,81 +5,29 @@ from app.services.llm_repair import extract_json, repair_json_with_llm
 
 MAX_RETRIES = 2
 
-
 SYSTEM_PROMPT = """
-You are PromptBot — a Prompt State Compiler for multimedia generation.
+You are PromptBot — a Prompt State Compiler.
 
-You maintain and evolve a persistent CREATIVE STATE.
+You receive:
+- user input
+- current_state (may be null)
 
-You MUST ALWAYS treat "current_state" as the single source of truth.
+Your job is to intelligently evolve a CREATIVE STATE for multimedia generation.
 
-If current_state exists:
-- You MUST modify it
-- You MUST NOT reset it
-- You MUST NOT ignore it
+Guidelines:
 
-If current_state is null:
-- You must create a new state
+• If current_state exists, treat it as the source of truth and evolve it
+• You are allowed to improve, expand, reorganize, and enrich the state
+• You are NOT limited to shallow edits
+• The final "prompt" must be a rich, production-ready generation prompt
+• Do not be mechanical. Think creatively.
 
-OUTPUT FORMAT (STRICT):
-
-{
-  "action": "respond | ask | structured",
-  "state": {
-    "subject": "...",
-    "composition": "...",
-    "scene": "...",
-    "style": ["..."],
-    "mood": "...",
-    "prompt": "FULL FINAL PROMPT STRING"
-  },
-  "data": null
-}
+Return ONLY a valid JSON object that matches the schema.
 """
 
 
-EDIT_SYSTEM_PROMPT = """
-You are PromptBot in EDIT MODE.
-
-You are PATCHING an existing STATE object.
-
-CRITICAL RULES:
-
-1) current_state is your ONLY source of truth
-2) You MUST NOT recreate state from scratch
-3) You MUST ONLY modify fields requested by user
-4) You MUST preserve ALL other fields EXACTLY
-
-Allowed modifications:
-- subject (only if explicitly requested)
-- composition
-- scene
-- style (append or replace if requested)
-- mood
-- prompt refinement
-
-You MUST return the FULL updated state.
-
-OUTPUT FORMAT (STRICT):
-
-{
-  "action": "respond",
-  "state": {
-    "subject": "...",
-    "composition": "...",
-    "scene": "...",
-    "style": ["..."],
-    "mood": "...",
-    "prompt": "FULL UPDATED PROMPT"
-  },
-  "data": null
-}
-"""
-
-
-def compile_prompt(prompt: str, edit_mode: bool = False, state: dict | None = None):
+def compile_prompt(prompt: str, state: dict | None = None):
     client = get_client()
-    system_prompt = EDIT_SYSTEM_PROMPT if edit_mode else SYSTEM_PROMPT
 
     user_payload = {
         "input": prompt,
@@ -87,7 +35,7 @@ def compile_prompt(prompt: str, edit_mode: bool = False, state: dict | None = No
     }
 
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(user_payload)},
     ]
 
@@ -97,7 +45,7 @@ def compile_prompt(prompt: str, edit_mode: bool = False, state: dict | None = No
         response = client.chat.completions.create(
             model="deepseek/deepseek-chat",
             messages=messages,
-            temperature=0.2,  
+            temperature=0.7,
         )
 
         content = response.choices[0].message.content
