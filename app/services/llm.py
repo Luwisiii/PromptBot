@@ -51,7 +51,7 @@ def compile_prompt(prompt: str, state: dict | None = None):
 
     for _ in range(MAX_RETRIES):
         response = client.chat.completions.create(
-            model="qwen/qwen2.5-coder-32b-instruct", 
+            model="qwen/qwen-2.5-coder-32b-instruct", 
             messages=messages,
             temperature=0.6,
             max_tokens=1200,  # 🔥 prevents OpenRouter 402

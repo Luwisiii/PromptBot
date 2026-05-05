@@ -43,7 +43,7 @@ BROKEN:
 """
 
     response = client.chat.completions.create(
-        model="qwen/qwen2.5-coder-32b-instruct", 
+        model="qwen/qwen-2.5-coder-32b-instruct", 
         messages=[
             {"role": "system", "content": "Strict JSON fixer."},
             {"role": "user", "content": prompt},
