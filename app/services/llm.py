@@ -6,34 +6,44 @@ from app.services.llm_repair import extract_json, repair_json_with_llm
 MAX_RETRIES = 2
 
 
-# 🔥 STRICT SCHEMA-BASED PROMPT (FIXED)
+# 🔥 STRICT + UNAMBIGUOUS SCHEMA PROMPT
 SYSTEM_PROMPT = """
-You are PromptBot — a strict Prompt State Compiler.
+You are PromptBot — a deterministic Prompt State Compiler.
 
-You MUST output ONLY valid JSON matching this schema:
+You MUST output ONLY valid JSON.
+
+ABSOLUTE RULES:
+- Output must be valid JSON (parsable by json.loads)
+- NEVER output partial JSON
+- NEVER stop mid-field
+- NEVER include comments or markdown
+- NEVER include input or current_state
+- NEVER use trailing commas
+- If unknown value → use null (NOT empty string)
+
+REQUIRED OUTPUT FORMAT:
 
 {
   "action": "ask | respond | structured",
   "state": {
-    "subject": string | null,
-    "composition": string | null,
-    "scene": string | null,
-    "style": list[string] | null,
-    "mood": string | null,
-    "prompt": string | null
+    "subject": string or null,
+    "composition": string or null,
+    "scene": string or null,
+    "style": array of strings or null,
+    "mood": string or null,
+    "prompt": string or null
   },
-  "data": object | null
+  "data": object or null
 }
 
-RULES:
-- NEVER include input, current_state, or any extra keys
-- ALWAYS return action, state, data
-- state must follow schema exactly
-- If unsure, use action = "respond"
+FIELD RULES:
+- style MUST be array or null
+- no empty strings allowed (use null instead)
+- prompt MUST be full string or null
 """
 
 
-# 🔥 TOKEN SAFETY (IMPORTANT FIX)
+# 🔥 SAFE STATE TRIM (prevents token explosion)
 def trim_state(state: dict | None):
     if not state:
         return None
@@ -44,8 +54,23 @@ def trim_state(state: dict | None):
         "scene": state.get("scene"),
         "style": (state.get("style") or [])[:5],
         "mood": state.get("mood"),
-        # 🚨 prevent recursive prompt explosion
+        # 🚨 prevent recursive prompt growth
         "prompt": None
+    }
+
+
+# 🔥 SANITIZER (fixes broken model outputs)
+def sanitize_state(state: dict | None):
+    if not state:
+        return state
+
+    return {
+        "subject": state.get("subject") or None,
+        "composition": state.get("composition") or None,
+        "scene": state.get("scene") or None,
+        "style": state.get("style") if isinstance(state.get("style"), list) else None,
+        "mood": state.get("mood") or None,
+        "prompt": state.get("prompt") or None,
     }
 
 
@@ -66,9 +91,9 @@ def compile_prompt(prompt: str, state: dict | None = None):
 
     for _ in range(MAX_RETRIES):
         response = client.chat.completions.create(
-            model="qwen/qwen-2.5-coder-32b-instruct",  # ✅ correct OpenRouter ID
+            model="qwen/qwen-2.5-coder-32b-instruct",
             messages=messages,
-            temperature=0.6,
+            temperature=0.2,  # 🔥 stability boost
             max_tokens=1200
         )
 
@@ -77,13 +102,13 @@ def compile_prompt(prompt: str, state: dict | None = None):
 
         try:
             data = extract_json(content)
-            validated = CopilotDecision(**data)
+            validated = CopilotDecision(**sanitize_state(data))
             return validated.model_dump()
         except Exception:
             continue
 
     # 🔥 fallback repair path
     repaired = repair_json_with_llm(last_content, "invalid output")
-    validated = CopilotDecision(**repaired)
+    validated = CopilotDecision(**sanitize_state(repaired))
 
     return validated.model_dump()
