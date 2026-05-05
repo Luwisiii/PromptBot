@@ -53,7 +53,7 @@ BROKEN JSON:
 """
 
     response = client.chat.completions.create(
-        model="deepseek/deepseek-chat",
+        model="qwen/qwen2.5-coder-32b-instruct",
         messages=[
             {"role": "system", "content": "You repair invalid JSON structures."},
             {"role": "user", "content": prompt},
