@@ -69,5 +69,8 @@ BROKEN JSON:
         ],
         temperature=0.0,
     )
-    
-    return json.loads(response.choices[0].message.content)
+
+    fixed = response.choices[0].message.content
+
+    # 🔥 CRITICAL FIX
+    return extract_json(fixed)
