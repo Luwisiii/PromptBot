@@ -5,39 +5,30 @@ from app.llm_client import get_client
 
 def extract_json(text: str) -> dict:
     """
-    Safely extract first JSON object from LLM text.
-    No regex. No LLM repair.
+    Extract the LAST valid JSON object from LLM text.
+    This avoids grabbing the user payload echoed by the model.
     """
 
     if not text:
         raise ValueError("Empty LLM response")
 
     text = text.strip()
-    
+
     # Remove markdown fences
     if "```" in text:
         parts = text.split("```")
-        for p in parts:
-            p = p.strip()
-            if p.startswith("{"):
-                text = p
-                break
+        text = parts[-1].strip()
 
-    # Direct parse
-    try:
-        return json.loads(text)
-    except JSONDecodeError:
-        pass
+    # Find all possible JSON objects and try from the end
+    for i in range(len(text) - 1, -1, -1):
+        if text[i] == "{":
+            candidate = text[i:]
+            try:
+                return json.loads(candidate)
+            except Exception:
+                continue
 
-    # Fallback: find first {...}
-    start = text.find("{")
-    end = text.rfind("}")
-
-    if start == -1 or end == -1:
-        raise ValueError(f"No JSON found:\n{text}")
-
-    candidate = text[start:end + 1]
-    return json.loads(candidate)
+    raise ValueError(f"No valid JSON found in:\n{text}")
 
 def repair_json_with_llm(bad_json_text: str, error: str):
     client = get_client()
